@@ -12,7 +12,7 @@
     <div class="brand">JobPilot <small>把投递变成可复盘的判断</small></div>
     <nav>
       <a href="/" class="{{ 'on' if request.url.path == '/' else '' }}">工作台</a>
-      <a href="/inbox" class="{{ 'on' if request.url.path.startswith('/inbox') else '' }}">跟进</a>
+      <a href="/inbox" class="{{ 'on' if request.url.path.startswith('/inbox') else '' }}">跟进{% if alert_count %}<b class="badge">{{ alert_count }}</b>{% endif %}</a>
       <a href="/review" class="{{ 'on' if request.url.path.startswith('/review') else '' }}">待确认</a>
       <a href="/jobs" class="{{ 'on' if request.url.path.startswith('/jobs') else '' }}">职位</a>
       <a href="/fetch" class="{{ 'on' if request.url.path.startswith('/fetch') else '' }}">抓取</a>

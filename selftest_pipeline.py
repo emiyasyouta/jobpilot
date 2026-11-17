@@ -30,7 +30,7 @@ os.environ["DEMO"] = "1"
 
 from app import pipeline, scoring  # noqa: E402
 from app.db import SessionLocal, init_db  # noqa: E402
-from app.models import Job, Preference, Profile, ProfileItem  # noqa: E402
+from app.models import Alert, Job, Preference, Profile, ProfileItem  # noqa: E402
 
 GREEN, RED, DIM, RESET = "\033[32m", "\033[31m", "\033[0m", "\033[0m"
 GREEN, RED, DIM, RESET = "\033[32m", "\033[31m", "\033[2m", "\033[0m"
@@ -352,6 +352,119 @@ def main() -> int:
         check("说对方回了、但会话里没有对方的话 → 也报 phantom",
               any(a.job.id == rp.id and a.kind == "phantom" for a in pipeline.audit(db)))
         check("audit 不改数据（它只负责说，不负责修）", rp.status == pipeline.REPLIED)
+
+        # ------------------------------------------------------------ 提醒
+        # 这一节的每一条都对应一种「提醒系统悄悄死掉」的方式。
+        # 它们全都不报错：不提醒你不会知道，重复提醒你也不会报错，只会关掉通知。
+        print("\n=== 17. 提醒：同一件事只提一次，提的是当下这一件 ===")
+        now2 = datetime(2026, 11, 18, 9, 0)
+
+        def greeted_hours(title: str, hours: float) -> Job:
+            j = add_job(db, title=title)
+            j.status = pipeline.GREETED
+            db.commit()
+            pipeline.log_out(db, j, "您好，我想投这个岗位")
+            row = (db.query(Message).filter(Message.job_id == j.id)
+                   .order_by(Message.id.desc()).first())
+            row.sent_at = now2 - timedelta(hours=hours)
+            db.commit()
+            return j
+
+        def of(j: Job, at: datetime | None = None) -> list:
+            at = at or now2
+            return [n for n in pipeline.nudges(db, now=at) if n.job.id == j.id]
+
+        a17 = greeted_hours("提醒A", pipeline.FOLLOWUP_HOURS + 2)
+        b17 = greeted_hours("提醒B", pipeline.COLD_HOURS + 8)
+
+        na = of(a17)
+        check("发出 20 小时没回 → 提「该催了」",
+              len(na) == 1 and na[0].alert.kind == pipeline.CHASE,
+              str([n.alert.kind for n in na]))
+        check("提醒里写的是真实时长，不是一句空话", "20 小时" in na[0].reason, na[0].reason)
+
+        nb = of(b17)
+        check("发出 80 小时没回 → 只提「久无回音」，不再同时挂着「该催了」（同一件事出现两次就是噪音）",
+              len(nb) == 1 and nb[0].alert.kind == pipeline.COLD,
+              str([n.alert.kind for n in nb]))
+
+        base_n = len(pipeline.nudges(db, now=now2))
+        for _ in range(3):
+            pipeline.nudges(db, now=now2)
+        check("连查四次不会越积越多（幂等：重复提醒是提醒失效的头号原因）",
+              len(pipeline.nudges(db, now=now2)) == base_n,
+              f"{base_n} → {len(pipeline.nudges(db, now=now2))}")
+
+        c17 = add_job(db, title="提醒C")
+        pipeline.log_in(db, c17, "明天下午方便来面试吗")
+        row = db.query(Message).filter(Message.job_id == c17.id).first()
+        row.sent_at = now2 - timedelta(hours=pipeline.REPLY_DUE_HOURS + 6)
+        db.commit()
+        nc = of(c17)
+        check("对方回了 30 小时你还没回 → 提「等你回」",
+              len(nc) == 1 and nc[0].alert.kind == pipeline.OVERDUE,
+              str([n.alert.kind for n in nc]))
+        check("最急的排最前：别人等你 > 你去催别人（前者有时效上限，后者没有）",
+              pipeline.nudges(db, now=now2)[0].alert.kind == pipeline.OVERDUE,
+              pipeline.nudges(db, now=now2)[0].alert.kind)
+
+        first = na[0].alert
+        pipeline.ack_alert(db, first, now=now2)
+        check("点「知道了」后立刻不再提", of(a17) == [],
+              str([n.alert.kind for n in of(a17)]))
+        check("但设的是安静期，不是永久静音",
+              first.snooze_until == now2 + timedelta(hours=pipeline.SNOOZE_HOURS),
+              str(first.snooze_until))
+        after = now2 + timedelta(hours=pipeline.SNOOZE_HOURS + 1)
+        check("安静期过了还没处理 → 会再提一次（点一次就再收不到，比没有提醒更糟）",
+              len(of(a17, at=after)) == 1,
+              str([(n.alert.kind, n.alert.created_at) for n in of(a17, at=after)]))
+
+        d17 = greeted_hours("提醒D", pipeline.FOLLOWUP_HOURS + 2)
+        nd = of(d17)
+        pipeline.ack_alert(db, nd[0].alert, hours=0, now=now2)
+        check("「以后别再提」= 这条情形还在，但不再打扰", of(d17) == [],
+              str([n.alert.kind for n in of(d17)]))
+
+        # 又发了一条消息 = 新的一轮，上一轮说过的「知道了」不该压住这一轮
+        pipeline.log_out(db, d17, "您好，我这边时间比较灵活")
+        row = (db.query(Message).filter(Message.job_id == d17.id)
+               .order_by(Message.id.desc()).first())
+        row.sent_at = now2 + timedelta(hours=1)
+        db.commit()
+        later2 = now2 + timedelta(hours=1 + pipeline.FOLLOWUP_HOURS + 1)
+        check("永久关闭只关这一轮：重新发了消息，新一轮照样提醒",
+              len(of(d17, at=later2)) == 1,
+              str([(n.alert.kind, n.alert.created_at) for n in of(d17, at=later2)]))
+
+        pipeline.log_in(db, a17, "好的，我明天下午过去")
+        check("记了对方的回复，这条岗位上的提醒立刻清空（情形不存在了，不是「知道了」）",
+              of(a17) == [], str([n.alert.kind for n in of(a17)]))
+        check("隔几天也不会拿「该催了」再诈尸（阶段已经变了，这条情形不存在）",
+              all(n.alert.kind != pipeline.CHASE
+                  for n in of(a17, at=now2 + timedelta(days=3))),
+              str([n.alert.kind for n in of(a17, at=now2 + timedelta(days=3))]))
+
+        e17 = greeted_hours("提醒E", pipeline.COLD_HOURS + 8)
+        ne = of(e17)
+        check("先有「久无回音」", len(ne) == 1 and ne[0].alert.kind == pipeline.COLD,
+              str([n.alert.kind for n in ne]))
+        pipeline.set_stage(db, e17, pipeline.REJECTED)
+        check("状态推进（这条线收工）后提醒消失", of(e17) == [],
+              str([n.alert.kind for n in of(e17)]))
+
+        f17 = greeted_hours("提醒F", pipeline.FOLLOWUP_HOURS + 2)
+        of(f17)
+        row = (db.query(Message).filter(Message.job_id == f17.id)
+               .order_by(Message.id.desc()).first())
+        row.sent_at = datetime.now() - timedelta(hours=1)   # 时间账变了：不再该催
+        db.commit()
+        check("时间账变了之后旧提醒既不显示，也不再占着位置挡住下一轮",
+              of(f17) == [] and db.query(Alert).filter(
+                  Alert.job_id == f17.id, Alert.ack_at.is_(None)).count() == 0,
+              str([(n.alert.kind, n.reason) for n in of(f17)]))
+        check("此时库里留着历史记录（关掉不等于删掉，出事要能回溯）",
+              db.query(Alert).filter(Alert.job_id == f17.id).count() >= 1)
 
     finally:
         db.close()

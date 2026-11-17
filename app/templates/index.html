@@ -16,6 +16,32 @@
   <div class="stat"><b><a href="/inbox" style="color:inherit">{{ stats.due_me }}</a></b><span>等你回</span></div>
 </div>
 
+{% if stats.alerts %}
+<div class="panel">
+  <div class="small">
+    <b>{{ stats.alerts }} 件事现在轮到你</b>
+    <span class="muted">· 这一栏按「谁欠谁一个动作」排，不按分数——85 分还没投的，没有 60 分但 HR 等你回话的急</span>
+  </div>
+  {% for n in nudges %}
+  <div class="nudge">
+    <span class="tag">{{ n.kind_cn }}</span>
+    <div class="who">
+      <a href="/jobs/{{ n.job.id }}#thread">{{ n.job.company or '未命名' }} · {{ n.job.title }}</a>
+      <div class="small muted">{{ n.reason }}</div>
+    </div>
+    <form method="post" action="/alerts/{{ n.alert.id }}/ack">
+      <button class="tiny ghost" type="submit">知道了</button>
+    </form>
+  </div>
+  {% endfor %}
+  {% if stats.alerts > nudges|length %}
+  <div class="small" style="margin-top:10px">
+    <a href="/inbox">还有 {{ stats.alerts - nudges|length }} 条，去跟进页看 →</a>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
 <h2>模型状态</h2>
 <div class="panel soft">
   {% if demo_mode %}

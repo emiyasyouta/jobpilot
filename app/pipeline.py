@@ -36,7 +36,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from . import config
-from .models import Greeting, Job, Message
+from .models import Alert, Greeting, Job, Message
 
 # ---------------------------------------------------------------- 状态机
 
@@ -112,6 +112,9 @@ def set_stage(db, job: Job, dst: str) -> bool:
     if not can_go(job.status, dst):
         return False
     job.status = dst
+    # 阶段变了，之前那些「该催了 / 等你回」的提醒全部作废。
+    # 不是「知道了」，是「这件事已经不存在了」——所以不设 snooze，永久关闭。
+    ack_for_job(db, job.id, commit=False)
     db.commit()
     return True
 
@@ -197,6 +200,9 @@ def log_in(db, job: Job, content: str) -> Message:
     # 说明它本来就不该发生，那也该走同一条校验，而不是在函数里另开一条暗道。
     if can_go(job.status, REPLIED):
         job.status = REPLIED
+    # 对方刚说了话，这之前「你拖了」的提醒自然失效——
+    # 留着它，你就会以为自己欠了两条回复，其实只欠这一条。
+    ack_for_job(db, job.id, commit=False)
     db.commit()
     return msg
 
@@ -572,6 +578,202 @@ def stats(groups: dict[str, list[Card]]) -> dict[str, int]:
         "overdue": sum(1 for c in groups["due_me"] if c.clock.overdue),
         "cold": sum(1 for c in groups["chase"] if c.clock.cold),
     }
+
+
+# ---------------------------------------------------------------- 提醒
+
+CHASE = "chase"        # 发出够久了，可以催一次
+COLD = "cold"          # 再久就没必要等了
+OVERDUE = "overdue"    # 对方回了，你拖着没回
+
+ALERT_CN = {CHASE: "该催了", COLD: "久无回音", OVERDUE: "等你回"}
+# 越小越急：别人在等你，比你去催别人更急，因为前者有时效上限（HR 的耐心）。
+ALERT_RANK = {OVERDUE: 0, COLD: 1, CHASE: 2}
+
+SNOOZE_HOURS = config.ALERT_SNOOZE_HOURS
+
+
+def _alert_kinds(c: Clock) -> list[str]:
+    """这一刻该提哪几种提醒。
+
+    cold 和 chase 不会同时出现：等够 72 小时的人当然也满足「等够 18 小时」，
+    但同时挂两条只会让同一件事在列表里出现两次。取更严重的那个。
+    """
+    if c.overdue:
+        return [OVERDUE]
+    if c.cold:
+        return [COLD]
+    if c.due:
+        return [CHASE]
+    return []
+
+
+def _suppressed(db, job: Job, kind: str, now: datetime) -> bool:
+    """同一种提醒现在该不该闭嘴。
+
+    判据只有一条：**这一轮结束了没有。** 而「一轮」的边界是「我又发了一条消息」——
+    重新打了招呼、又催了一次，就是新的一轮，上一轮说过「知道了」不该压住这一轮。
+
+    没有这条边界，两种失败一定出现：
+      * 永久关闭之后再也不提 —— 你点了「这条以后别再烦我」，第二次催完就真的收不到提醒了；
+      * 或者反过来，Snooze 一过就诈尸 —— 明明阶段已经变了，还拿旧情形来提醒你。
+
+    所以先看最新那条提醒是哪个阶段留下的：之后如果又发过消息，一律重新判断。
+    """
+    newest = (
+        db.query(Alert)
+        .filter(Alert.job_id == job.id, Alert.kind == kind)
+        .order_by(Alert.id.desc())
+        .first()
+    )
+    if newest is None:
+        return False
+
+    last_out = _last(thread(db, job), "out")
+    if (
+        last_out and last_out.at
+        and newest.created_at and last_out.at > newest.created_at
+    ):
+        return False                      # 新一轮，旧提醒的结论不适用
+
+    if newest.ack_at is None:
+        return True                       # 还挂着，别重复建
+    if newest.snooze_until is None:
+        return True                       # 永久关闭
+    return newest.snooze_until > now      # 安静期内
+
+
+def raise_alerts(db, *, now: datetime | None = None) -> list[Alert]:
+    """扫一遍所有岗位，把该提而没提过的提醒落库。**幂等**——多调几次不会重复。
+
+    这是整个提醒机制的唯一写入口。放在启动时、打开跟进页时、以及 `python -m app
+    remind` 里调用；不挂常驻定时器，因为本地单进程应用挂个 sleep 循环只会让人
+    分不清「它到底在不在跑」。
+    """
+    now = now or datetime.now()
+    created: list[Alert] = []
+    touched = False      # 只清理没新建时也要落盘，否则这次的关单会丢
+    for job in db.query(Job).all():
+        c = clock(db, job, now)
+        kinds = _alert_kinds(c)
+        # 时间账变了（补记了一条更晚的消息、或者状态改回来了），已经不该提的顺手关掉。
+        # 不关的话它会永远挂在库里：列表里看不见，却一直挡着下一轮的提醒——
+        # 「有个东西在拦你，但你找不到它」是最难查的一类问题。
+        for a in db.query(Alert).filter(Alert.job_id == job.id, Alert.ack_at.is_(None)).all():
+            if a.kind not in kinds:
+                a.ack_at = now
+                a.snooze_until = None
+                touched = True
+        for kind in kinds:
+            if _suppressed(db, job, kind, now):
+                continue
+            # 升级了就作废旧的：已经「久无回音」，再挂着「该催了」是两条噪音。
+            # 这不算「你知道了」，所以不设 snooze。
+            for a in db.query(Alert).filter(
+                Alert.job_id == job.id, Alert.ack_at.is_(None)
+            ).all():
+                if ALERT_RANK.get(a.kind, 9) > ALERT_RANK.get(kind, 9):
+                    a.ack_at = now
+                    a.snooze_until = None
+            a = Alert(job_id=job.id, kind=kind, created_at=now)
+            db.add(a)
+            db.flush()
+            created.append(a)
+    if created or touched:
+        db.commit()
+    return created
+
+
+def _hours_cn(h: float | None) -> str:
+    if h is None:
+        return ""
+    if h < 1:
+        return "不到 1 小时"
+    if h < 48:
+        return f"{h:.0f} 小时"
+    return f"{h / 24:.0f} 天"
+
+
+@dataclass
+class Nudge:
+    """一条待处理的提醒，连着它说的是哪条岗位。"""
+
+    alert: Alert
+    job: Job
+    clock: Clock
+    last_in: "Turn | None" = None    # 对方最后那句话，打印时要带上
+
+    @property
+    def kind_cn(self) -> str:
+        return ALERT_CN.get(self.alert.kind, self.alert.kind)
+
+    @property
+    def reason(self) -> str:
+        """一句话说清「欠了什么」。不带「建议你」，只陈述事实。"""
+        c = self.clock
+        if self.alert.kind == OVERDUE:
+            return f"对方 {_hours_cn(c.their_last)}前回了你，你还没回"
+        if self.alert.kind == COLD:
+            return f"发出 {_hours_cn(c.my_last)}没回音，基本可以作罢"
+        return f"发出 {_hours_cn(c.my_last)}没回音，可以催一次"
+
+    @property
+    def rank(self) -> int:
+        return ALERT_RANK.get(self.alert.kind, 9)
+
+
+def nudges(db, *, now: datetime | None = None) -> list[Nudge]:
+    """当前还生效的提醒，最急的在前。**先算后读**：判断依据永远是此刻的时间账，
+    不是上次落库时的快照——否则你昨晚改过的状态，今早看到的还是旧提醒。"""
+    now = now or datetime.now()
+    raise_alerts(db, now=now)
+    out: list[Nudge] = []
+    jobs = {j.id: j for j in db.query(Job).all()}
+    for a in db.query(Alert).filter(Alert.ack_at.is_(None)).all():
+        job = jobs.get(a.job_id)
+        if job is None:
+            continue
+        c = clock(db, job, now)
+        # 落库之后事实可能又变了（比如你刚记了一条回复）。以此刻为准，
+        # 已经不该提的直接跳过——下次 raise 会把它关掉。
+        if a.kind not in _alert_kinds(c):
+            continue
+        th = thread(db, job)
+        out.append(Nudge(alert=a, job=job, clock=c, last_in=_last(th, "in")))
+    out.sort(key=lambda n: (n.rank, -(n.clock.their_last or n.clock.my_last or 0)))
+    return out
+
+
+def ack_alert(db, alert: Alert, *, now: datetime | None = None,
+              hours: int | None = None) -> Alert:
+    """「知道了」。默认安静 12 小时而不是永久——见 Alert.snooze_until 的注释。
+
+    传 hours=0 表示「这条以后别再提」（阶段已经变了、事情不存在了）。
+    """
+    now = now or datetime.now()
+    h = SNOOZE_HOURS if hours is None else hours
+    alert.ack_at = now
+    alert.snooze_until = None if h <= 0 else now + timedelta(hours=h)
+    db.commit()
+    return alert
+
+
+def ack_for_job(db, job_id: int, *, now: datetime | None = None, commit: bool = True) -> int:
+    """把某条岗位下所有还挂着的提醒永久关闭。状态推进、记了新回复时调用。
+
+    为什么不设 snooze：这些提醒背后的情形已经不存在了，不是「你知道了」。
+    给它留个 snooze 等于允许它 12 小时后诈尸——那时的 reason 会是一句
+    「发出 0 小时没回音」的废话。
+    """
+    now = now or datetime.now()
+    n = 0
+    for a in db.query(Alert).filter(Alert.job_id == job_id, Alert.ack_at.is_(None)).all():
+        a.ack_at = now
+        a.snooze_until = None
+        n += 1
+    if n and commit:
+        db.commit()
+    return n
 
 
 # ---------------------------------------------------------------- 一致性

@@ -100,6 +100,9 @@ PORT = int(os.getenv("PORT", "8000"))
 # ---- 业务参数 ----
 # 已读未回超过这么多小时，提示生成跟进话术
 FOLLOWUP_AFTER_HOURS = int(os.getenv("FOLLOWUP_AFTER_HOURS", "18"))
+# 点「知道了」之后安静多久。设成 0 表示下次打开就再提一次；
+# 设成很大的值等于永久静音——后者是提醒系统最常见的死法，别配。
+ALERT_SNOOZE_HOURS = int(os.getenv("ALERT_SNOOZE_HOURS", "12"))
 
 # BOSS 城市码。新城市在这里加，代码里不许出现裸数字。
 CITY_CODES: dict[str, str] = {

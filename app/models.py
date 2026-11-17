@@ -151,6 +151,10 @@ class Job(Base):
         back_populates="job", cascade="all, delete-orphan", lazy="selectin",
         order_by="Review.id",
     )
+    alerts: Mapped[list["Alert"]] = relationship(
+        back_populates="job", cascade="all, delete-orphan", lazy="selectin",
+        order_by="Alert.id",
+    )
 
     @property
     def latest_match(self) -> "Match | None":
@@ -243,6 +247,37 @@ class Message(Base):
     sent_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     source_msg_id: Mapped[str] = mapped_column(String(128), default="")
+
+
+class Alert(Base):
+    """一条「现在轮到你动手了」的提醒。
+
+    它和 /inbox 里的分组不是一回事，别把两者合并：
+
+        分组是**此刻的事实**——这条岗位现在卡在谁手上，随时都在。
+        提醒是**一次事件**——18 小时前提醒你催一次，你催过了它就该消失。
+
+    混在一起的后果是可预料的：同一句「该催了」在页面上挂三天，你学会无视这一栏；
+    等它真的凉了，你也不会再多看一眼。提醒系统的失效方式从来不是「没弹出来」，
+    而是**弹了太多次同一件事**。
+
+    所以我存三样：为什么提（kind）、什么时候提的（created_at）、你什么时候说「知道了」
+    （ack_at / snooze_until）。
+    """
+
+    __tablename__ = "alerts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    # chase=该催一次 / cold=久无回音该放弃 / overdue=对方回了你还没回
+    kind: Mapped[str] = mapped_column(String(16), default="chase", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    ack_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # 「知道了」不是永久静音。到期后同一条还能再提——否则点一次就再收不到，
+    # 比没有提醒更糟：你以为什么都不缺，其实是全被自己关掉了。
+    snooze_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    job: Mapped[Job] = relationship(back_populates="alerts")
 
 
 class Resume(Base):

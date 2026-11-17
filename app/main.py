@@ -23,7 +23,9 @@ from . import asks, config, greeter, pipeline, resume_docx, review, scoring
 from . import fetch as fetch_jobs
 from .db import SessionLocal, get_db, init_db
 from .llm import get_client
-from .models import Greeting, Job, Match, Preference, Profile, ProfileItem, Resume, Review
+from .models import (
+    Alert, Greeting, Job, Match, Preference, Profile, ProfileItem, Resume, Review,
+)
 from .sources import boss_live
 from .sources.base import FetchError, FetchSpec, NeedHumanError, SetupError
 
@@ -83,6 +85,9 @@ async def lifespan(app: FastAPI):
         # P3 之前 mark_sent 只改 Greeting、不写 Message。不补的话，那些岗位在跟进板上
         # 会显示成「一条消息都没有」，于是被当成「还没投」重新催一遍。
         pipeline.backfill_sent_greetings(db)
+        # 启动时先扫一遍：服务是常驻的，但人不会一直开着页面。
+        # 冷启动这次扫描保证「昨天发的招呼今天该催了」在第一次打开时就是准的。
+        pipeline.raise_alerts(db)
     finally:
         db.close()
     yield
@@ -96,12 +101,32 @@ templates = Jinja2Templates(directory=str(config.TEMPLATE_DIR))
 # ---------------------------------------------------------------- 工具
 
 
+def _alert_count() -> int:
+    """导航角标：现在挂着几条没处理的提醒。
+
+    **只读，不在这里做检查。** 检查（raise_alerts）要写库，而这个函数被每个页面
+    模板调用、跑在路由自己的事务里；另开一个连接去写同一张 SQLite，会在提交时
+    等主连接释放读锁。本地工具卡五秒比角标不准难受得多。
+
+    真正的检查放在三处：启动时、打开跟进页时、`python -m app.remind`。
+    """
+    try:
+        db = SessionLocal()
+        try:
+            return db.query(Alert).filter(Alert.ack_at.is_(None)).count()
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001  库还没建好时不该把整个页面拖挂
+        return 0
+
+
 def _ctx(request: Request, **kw) -> dict:
     base = {
         "request": request,
         "demo_mode": config.DEMO_MODE,
         "model_name": config.LLM_MODEL,
         "css_version": config.CSS_VERSION,
+        "alert_count": _alert_count(),
     }
     base.update(kw)
     return base
@@ -148,6 +173,8 @@ def index(request: Request, db: Session = Depends(get_db)):
     # 换来的是首页那个数字和 /inbox 里的分组永远一致——两处各算一套必然会分叉。
     board = pipeline.board(db, profile=profile, pref=_get_pref(db, profile))
     pstats = pipeline.stats(board)
+    # 首页也顺手做一次提醒检查：这是人一天里最可能打开的一页。
+    alert_rows = pipeline.nudges(db)
 
     ok, msg = (False, "未检测")
     if not config.DEMO_MODE:
@@ -161,7 +188,9 @@ def index(request: Request, db: Session = Depends(get_db)):
         profile=profile,
         stats={"total": total, "good": good, "blocked": blocked,
                "following": following, "pending": pending,
-               "due_me": pstats["due_me"], "chase": pstats["chase"]},
+               "due_me": pstats["due_me"], "chase": pstats["chase"],
+               "alerts": len(alert_rows)},
+        nudges=alert_rows[:3],
         llm_ok=ok,
         llm_msg=msg,
         recent=jobs[:8],
@@ -334,17 +363,36 @@ def job_detail(job_id: int, request: Request, db: Session = Depends(get_db)):
 def inbox_page(request: Request, db: Session = Depends(get_db)):
     profile = _get_profile(db)
     groups = pipeline.board(db, profile=profile, pref=_get_pref(db, profile))
+    # nudges() 内部先 raise 再读，所以打开这一页就等于做了一次检查——
+    # 这是「自动提醒」在你没挂定时任务时的兜底路径。
+    rows = pipeline.nudges(db)
     return templates.TemplateResponse(request, "inbox.html", _ctx(
         request,
         groups=groups,
         stats=pipeline.stats(groups),
+        nudges=rows,
         anomalies=pipeline.audit(db),
         intent_cn=pipeline.INTENT_CN,
         stage_cn=pipeline.STAGE_CN,
         followup_hours=pipeline.FOLLOWUP_HOURS,
         cold_hours=pipeline.COLD_HOURS,
         reply_due=pipeline.REPLY_DUE_HOURS,
+        snooze_hours=pipeline.SNOOZE_HOURS,
     ))
+
+
+@app.post("/alerts/{alert_id}/ack")
+def ack_alert(alert_id: int, request: Request, db: Session = Depends(get_db)):
+    """「知道了」。默认安静 12 小时（ALERT_SNOOZE_HOURS），不是永久静音。
+
+    `?forever=1` 用于「这件事已经不存在了」，直接关死。
+    """
+    a = db.get(Alert, alert_id)
+    if a is None or a.ack_at is not None:
+        return RedirectResponse(_back(request, "/"), status_code=303)
+    forever = request.query_params.get("forever") in ("1", "true", "yes")
+    pipeline.ack_alert(db, a, hours=0 if forever else None)
+    return RedirectResponse(_back(request, "/"), status_code=303)
 
 
 def _back(request: Request, default: str) -> str:

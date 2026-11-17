@@ -116,6 +116,24 @@ button:disabled { opacity: .35; cursor: not-allowed; }
 ul.plain { margin: 6px 0; padding-left: 18px; }
 ul.plain li { margin: 3px 0; }
 
+/* 导航角标：有几条提醒在等你。黑白而不是红色——红色在提醒里用一次就贬值，
+   真正的「你先看这条」靠排序，不靠颜色。 */
+nav a b.badge {
+  display: inline-block; margin-left: 5px; padding: 0 5px;
+  font-size: 11px; font-weight: 400; line-height: 15px;
+  background: var(--ink); color: #fff; border-radius: 8px;
+}
+
+/* 提醒条：一条一行，右边一个「知道了」。不做卡片堆叠，因为这里要的是
+   一眼扫完，不是逐个阅读。 */
+.nudge {
+  display: flex; gap: 12px; align-items: baseline;
+  padding: 9px 0; border-bottom: 1px solid var(--line);
+}
+.nudge:last-child { border-bottom: 0; }
+.nudge .who { flex: 1; min-width: 200px; }
+.nudge form { margin: 0; }
+
 /* 窄窗口（预览面板、半屏终端）下五格统计会挤成竖条，多栏表单也会把
    输入框压到读不清。这里只做最低限度的重排，不为手机做适配——
    单用户本地工具的使用场景是浏览器全宽。 */

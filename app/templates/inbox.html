@@ -17,6 +17,27 @@
   <div class="stat"><b>{{ stats.closed }}</b><span>已结束</span></div>
 </div>
 
+{% if nudges %}
+<div class="panel">
+  <div class="small">
+    <b>{{ nudges|length }} 件事现在轮到你</b>
+    <span class="muted">· 点「知道了」安静 {{ snooze_hours }} 小时，不是永久——到期还没处理会再提一次</span>
+  </div>
+  {% for n in nudges %}
+  <div class="nudge">
+    <span class="tag">{{ n.kind_cn }}</span>
+    <div class="who">
+      <a href="/jobs/{{ n.job.id }}#thread">{{ n.job.company or '未命名' }} · {{ n.job.title }}</a>
+      <div class="small muted">{{ n.reason }}</div>
+    </div>
+    <form method="post" action="/alerts/{{ n.alert.id }}/ack">
+      <button class="tiny ghost" type="submit">知道了</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
 {% if anomalies %}
 <div class="panel">
   <div class="small">
