@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}职位 · JobPilot{% endblock %}
+{% block content %}
+
+<h1>职位</h1>
+<p class="lead">粘贴一条 JD 就能得到分数和判断依据。分数不是模型给的，是四维规则算出来的，每一项都能追问。</p>
+
+<details class="panel">
+  <summary style="cursor:pointer; font-weight:700">＋ 新增职位（粘贴 JD）</summary>
+  <form method="post" action="/jobs/new" style="margin-top:14px">
+    <div class="grid3">
+      <div class="field"><label>公司 *</label><input type="text" name="company" required></div>
+      <div class="field"><label>岗位名称 *</label><input type="text" name="title" required></div>
+      <div class="field"><label>城市</label><input type="text" name="city" placeholder="南昌"></div>
+    </div>
+    <div class="grid3">
+      <div class="field"><label>薪资下限</label><input type="number" name="salary_min" step="1" placeholder="150"></div>
+      <div class="field"><label>薪资上限</label><input type="number" name="salary_max" step="1" placeholder="180"></div>
+      <div class="field">
+        <label>薪资单位</label>
+        <select name="salary_unit">
+          <option value="day">元/天</option>
+          <option value="month">元/月</option>
+          <option value="year">元/年</option>
+        </select>
+      </div>
+    </div>
+    <div class="grid3">
+      <div class="field"><label>学历要求</label><input type="text" name="edu_req" placeholder="本科"></div>
+      <div class="field"><label>经验要求</label><input type="text" name="exp_req" placeholder="经验不限"></div>
+      <div class="field"><label>每周天数</label><input type="number" name="days_per_week" placeholder="5"></div>
+    </div>
+    <div class="grid3">
+      <div class="field"><label>要求实习月数</label><input type="number" name="months_req" placeholder="3"></div>
+      <div class="field"><label>HR 称呼</label><input type="text" name="hr_name" placeholder="林女士"></div>
+      <div class="field"><label>职位链接</label><input type="text" name="url" placeholder="https://"></div>
+    </div>
+    <div class="field">
+      <label>JD 原文 *（把岗位职责和任职要求整段粘进来，越全越准）</label>
+      <textarea name="jd_text" required placeholder="岗位职责：&#10;1. ……&#10;任职要求：&#10;1. ……&#10;工作时间：双休"></textarea>
+    </div>
+    <button type="submit">保存并评分</button>
+  </form>
+</details>
+
+<h2>职位列表（{{ rows|length }}）</h2>
+{% if rows %}
+<table>
+  <thead>
+    <tr>
+      <th style="width:64px">分数</th>
+      <th>公司 / 岗位</th>
+      <th style="width:110px">城市</th>
+      <th style="width:120px">薪资</th>
+      <th>判断依据</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td class="score {{ 'low' if r.blocked }}">
+        {% if r.blocked %}阻断{% elif r.score is not none %}{{ '%.0f'|format(r.score) }}{% else %}—{% endif %}
+      </td>
+      <td>
+        <a href="/jobs/{{ r.job.id }}">{{ r.job.company }}</a>
+        <div class="small muted">{{ r.job.title }}</div>
+      </td>
+      <td class="muted">{{ r.job.city }}</td>
+      <td class="small muted">
+        {% if r.job.salary_min %}{{ r.job.salary_min|int }}–{{ r.job.salary_max|int }}
+        {{ {'day':'/天','month':'/月','year':'/年'}.get(r.job.salary_unit, '') }}{% else %}—{% endif %}
+      </td>
+      <td class="small">
+        {% if r.blocked %}<span class="blocked-text">{{ r.blocked_reason }}</span>
+        {% else %}<span class="muted">{{ r.reason }}</span>{% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">
+  还没有职位。用上面的表单粘一条 JD，或者
+  <form class="inline" method="post" action="/demo/load"><button class="tiny ghost" type="submit">载入 6 条示例</button></form>
+  先看效果。
+</p>
+{% endif %}
+
+{% endblock %}

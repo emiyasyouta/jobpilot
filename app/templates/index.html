@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}工作台 · JobPilot{% endblock %}
+{% block content %}
+
+<h1>工作台</h1>
+<p class="lead">
+  项目的定位不是「多投几家」，而是把每一次投递的判断依据留痕：值不值得投、为什么、用了哪条经历。
+</p>
+
+<div class="stats">
+  <div class="stat"><b>{{ stats.total }}</b><span>在库职位</span></div>
+  <div class="stat"><b>{{ stats.good }}</b><span>60 分以上</span></div>
+  <div class="stat"><b>{{ stats.blocked }}</b><span>硬约束阻断</span></div>
+  <div class="stat"><b><a href="/review" style="color:inherit">{{ stats.pending }}</a></b><span>待你确认</span></div>
+  <div class="stat"><b>{{ stats.following }}</b><span>跟进中</span></div>
+  <div class="stat"><b><a href="/inbox" style="color:inherit">{{ stats.due_me }}</a></b><span>等你回</span></div>
+</div>
+
+<h2>模型状态</h2>
+<div class="panel soft">
+  {% if demo_mode %}
+    <div>当前为 <b>DEMO 模式</b>，不调用模型，话术走模板兜底。去掉环境变量 <code>DEMO</code> 后恢复。</div>
+  {% elif llm_ok %}
+    <div>模型可用 · <span class="muted">{{ model_name }}</span> · 探活返回：<span class="muted">{{ llm_msg }}</span></div>
+  {% else %}
+    <div class="err">模型不可用，话术会自动降级为模板拼接（不影响打分与简历）。</div>
+    <div class="small muted">{{ llm_msg }}</div>
+    <div class="hint">检查 .env 里的 LLM_BASE_URL / LLM_MODEL / LLM_API_KEY。本地中转需要绕过系统代理。</div>
+  {% endif %}
+</div>
+
+<h2>快速开始</h2>
+<div class="panel">
+  <ol class="small" style="margin:0; padding-left:20px; color:var(--muted); line-height:2">
+    <li>在「档案」里核对个人经历，<b>只有勾选可信的素材才会被写进话术和简历</b>。</li>
+    <li>在「职位」里粘贴一条 JD，系统会自动打分并标出硬约束冲突。</li>
+    <li>去「<a href="/review">待确认</a>」把规则拿不准的那几条过一遍——规则判错时不会报错，只会安静地压低分数。</li>
+    <li>进职位详情生成招呼语，逐条看校验结果，确认无误再复制去打招呼。</li>
+    <li>发出去之后到「<a href="/inbox">跟进</a>」：HR 回了就把原话粘进来，状态自己会走；
+        里面抽出来的工时、薪资不会自动改分，要你点一次采信。</li>
+    <li>导出简历：按该岗位的关键词调整项目顺序，不出库。</li>
+  </ol>
+  <div style="margin-top:14px; display:flex; gap:10px">
+    <a class="btn" href="/jobs">去职位列表</a>
+    <form class="inline" method="post" action="/demo/load">
+      <button class="ghost" type="submit">载入示例职位</button>
+    </form>
+    <form class="inline" method="post" action="/resume">
+      <button class="ghost" type="submit">导出通用简历</button>
+    </form>
+  </div>
+</div>
+
+<h2>最近职位</h2>
+{% if recent %}
+<table>
+  <thead>
+    <tr><th style="width:70px">分数</th><th>公司 / 岗位</th><th style="width:120px">城市</th><th>判断</th></tr>
+  </thead>
+  <tbody>
+  {% for j in recent %}
+    {% set m = j.latest_match %}
+    <tr>
+      <td class="score {{ 'low' if (not m or m.blocked) }}">
+        {% if m and m.blocked %}阻断{% elif m %}{{ '%.0f'|format(m.score) }}{% else %}—{% endif %}
+      </td>
+      <td><a href="/jobs/{{ j.id }}">{{ j.company }} · {{ j.title }}</a></td>
+      <td class="muted">{{ j.city }}</td>
+      <td class="small muted">{{ m.reason_text if m else '尚未评估' }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">还没有职位。去 <a href="/jobs">职位列表</a> 粘贴一条 JD，或用上面的「载入示例职位」看看效果。</p>
+{% endif %}
+
+{% endblock %}

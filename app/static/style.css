@@ -1,0 +1,127 @@
+:root {
+  --ink: #1a1a1a;
+  --muted: #6b6b6b;
+  --line: #dcdcdc;
+  --bg: #ffffff;
+  --soft: #f6f6f4;
+  --warn: #a8321f;
+  --ok: #1f6b3a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+header {
+  border-bottom: 1px solid var(--line);
+  padding: 14px 0;
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 10;
+}
+
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+.brand { font-weight: 700; font-size: 16px; letter-spacing: .5px; }
+.brand small { font-weight: 400; color: var(--muted); margin-left: 8px; font-size: 12px; }
+
+nav { display: flex; gap: 20px; margin-top: 8px; }
+nav a { color: var(--muted); text-decoration: none; padding-bottom: 2px; }
+nav a:hover { color: var(--ink); }
+nav a.on { color: var(--ink); border-bottom: 2px solid var(--ink); }
+
+main { padding: 28px 0 64px; }
+
+h1 { font-size: 20px; margin: 0 0 4px; font-weight: 700; }
+h2 { font-size: 15px; margin: 28px 0 10px; font-weight: 700; }
+h3 { font-size: 14px; margin: 16px 0 6px; font-weight: 700; }
+p.lead { color: var(--muted); margin: 0 0 18px; }
+
+.stats { display: flex; gap: 1px; background: var(--line); border: 1px solid var(--line); margin: 18px 0; }
+.stat { flex: 1; background: var(--bg); padding: 14px 16px; }
+.stat b { display: block; font-size: 22px; font-weight: 700; line-height: 1.2; }
+.stat span { color: var(--muted); font-size: 12px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 400; font-size: 12px; border-bottom: 1px solid var(--ink); }
+tr:hover td { background: var(--soft); }
+
+.score { font-weight: 700; font-size: 16px; }
+.score.low { color: var(--muted); }
+.tag {
+  display: inline-block; font-size: 11px; padding: 1px 6px; border: 1px solid var(--line);
+  color: var(--muted); margin-right: 4px;
+}
+.tag.block { color: var(--warn); border-color: var(--warn); }
+
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.blocked-text { color: var(--warn); font-size: 12px; }
+
+form.inline { display: inline; }
+
+label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+input[type=text], input[type=number], input[type=date], textarea, select {
+  width: 100%; padding: 7px 9px; border: 1px solid var(--line); background: #fff;
+  font: inherit; font-size: 13px; color: var(--ink);
+}
+input:focus, textarea:focus { outline: none; border-color: var(--ink); }
+textarea { resize: vertical; min-height: 90px; line-height: 1.6; }
+
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.field { margin-bottom: 12px; }
+
+button, .btn {
+  display: inline-block; padding: 7px 16px; border: 1px solid var(--ink); background: var(--ink);
+  color: #fff; font: inherit; font-size: 13px; cursor: pointer; text-decoration: none;
+}
+button:hover, .btn:hover { background: #333; }
+button.ghost, .btn.ghost { background: #fff; color: var(--ink); }
+button.ghost:hover, .btn.ghost:hover { background: var(--soft); }
+button.tiny { padding: 3px 10px; font-size: 12px; }
+button:disabled { opacity: .35; cursor: not-allowed; }
+
+.panel { border: 1px solid var(--line); padding: 16px 18px; margin: 14px 0; }
+.panel.soft { background: var(--soft); border-color: var(--soft); }
+
+.kv { display: grid; grid-template-columns: 84px 1fr; gap: 4px 12px; font-size: 13px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; }
+
+.dimbar { height: 3px; background: var(--line); margin-top: 4px; }
+.dimbar i { display: block; height: 3px; background: var(--ink); }
+
+.issue { font-size: 12px; margin: 3px 0; }
+.issue.block { color: var(--warn); }
+.issue.warn { color: var(--muted); }
+
+.pre {
+  white-space: pre-wrap; font-family: inherit; font-size: 13px;
+  border: 1px solid var(--line); padding: 12px 14px; background: #fff; line-height: 1.7;
+}
+
+.err { color: var(--warn); font-size: 13px; }
+.hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+ul.plain { margin: 6px 0; padding-left: 18px; }
+ul.plain li { margin: 3px 0; }
+
+/* 窄窗口（预览面板、半屏终端）下五格统计会挤成竖条，多栏表单也会把
+   输入框压到读不清。这里只做最低限度的重排，不为手机做适配——
+   单用户本地工具的使用场景是浏览器全宽。 */
+@media (max-width: 760px) {
+  .stats { flex-wrap: wrap; }
+  .stat { flex: 1 1 30%; }
+  .grid2, .grid3 { grid-template-columns: 1fr; }
+  .wrap { padding: 0 16px; }
+}

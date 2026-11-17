@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}抓取 · JobPilot{% endblock %}
+{% block content %}
+
+<h1>抓取职位</h1>
+<p class="lead">从你已登录的浏览器里读搜索结果，解析成结构化职位并打分。只读页面，不登录、不碰验证码、不自动发消息。</p>
+
+<div class="panel soft">
+  <div class="kv">
+    <dt>浏览器</dt>
+    <dd>
+      {% if probe_ok %}
+        <span class="tag">已连接</span> <span class="muted small">{{ cdp }}</span>
+      {% else %}
+        <span class="tag block">未连接</span> <span class="muted small">{{ probe_msg }}</span>
+      {% endif %}
+    </dd>
+    <dt>免浏览器</dt>
+    <dd class="muted small">先选「示例快照」试跑，走的是同一套解析器，不联网。</dd>
+  </div>
+</div>
+
+<form method="post" action="/fetch">
+  <div class="grid3">
+    <div class="field">
+      <label>关键词</label>
+      <input type="text" name="keyword" value="{{ keyword }}" placeholder="AI应用开发 实习">
+    </div>
+    <div class="field">
+      <label>城市</label>
+      <select name="city">
+        {% for c in cities %}
+        <option value="{{ c }}" {{ 'selected' if c == city else '' }}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>页数（每页约 15 条）</label>
+      <input type="number" name="pages" min="1" max="3" value="{{ pages }}">
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="field">
+      <label>数据来源</label>
+      <select name="source">
+        <option value="live" {{ 'selected' if source != 'snapshot' else '' }}>浏览器实时抓取</option>
+        <option value="snapshot" {{ 'selected' if source == 'snapshot' else '' }}>示例快照（离线，不联网）</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>调试地址（浏览器实时抓取时用）</label>
+      <input type="text" name="cdp" value="{{ cdp }}">
+    </div>
+  </div>
+
+  <div class="field">
+    <label><input type="checkbox" name="with_detail" value="1" {{ 'checked' if with_detail else '' }} style="width:auto;margin-right:6px">进入详情页补全 JD（慢一些，但分数才可信）</label>
+  </div>
+
+  <button type="submit">开始抓取</button>
+  <span class="hint">实时抓取会串行翻页、每页间隔 2–5 秒，一次性限 3 页。</span>
+</form>
+
+{% if error %}
+<div class="panel">
+  <div class="err">{{ error }}</div>
+  {% if error_hint %}<div class="hint">{{ error_hint }}</div>{% endif %}
+</div>
+{% endif %}
+
+{% if rows or dup %}
+<h2>结果</h2>
+<p class="lead">新增 {{ rows|length }} 条{% if dup %}，跳过重复 {{ dup }} 条{% endif %}。</p>
+{% if not rows %}
+<p class="muted small">这批职位都已经在库里了，去<a href="/jobs">职位列表</a>看最新打分即可。</p>
+{% endif %}
+{% if rows %}
+<table>
+  <thead>
+    <tr><th style="width:64px">分数</th><th>公司 / 职位</th><th style="width:180px">地点 · 薪资</th><th style="width:110px">标记</th></tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td>
+        {% if r.blocked %}<span class="blocked-text">阻断</span>
+        {% else %}<span class="score {{ 'low' if r.score < 55 else '' }}">{{ r.score }}</span>{% endif %}
+      </td>
+      <td>
+        {% if r.id %}<a href="/jobs/{{ r.id }}">{{ r.company or '（未知公司）' }} · {{ r.title }}</a>
+        {% else %}{{ r.company or '（未知公司）' }} · {{ r.title }}{% endif %}
+      </td>
+      <td class="muted small">{{ r.place }}<br>{{ r.salary }}</td>
+      <td>
+        {% if r.blocked %}<div class="blocked-text small">{{ r.blocked_reason }}</div>{% endif %}
+        {% if not r.has_jd %}<span class="tag block">无 JD</span>{% endif %}
+        {% if not r.company %}<span class="tag block">无公司</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endif %}
+
+<h2>怎么让浏览器就绪</h2>
+<div class="panel">
+  <p class="small muted" style="margin-top:0">关掉现有的 Edge，用下面这条命令新开一个带调试端口的窗口，在里面登录 BOSS，再回来点开始：</p>
+  <pre class="pre">msedge.exe --remote-debugging-port=9222 --user-data-dir="%TEMP%\edge-cdp"</pre>
+  <p class="hint">不需要装 playwright——后端直接用 <code>websockets</code> 连 CDP 协议。用无头浏览器会被拦，必须是正常窗口。</p>
+</div>
+
+{% endblock %}

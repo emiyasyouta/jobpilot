@@ -1,0 +1,12 @@
+# 仓库里统一存 LF。Windows 上检出时按需转换，避免满屏 "LF will be replaced by CRLF" 警告，
+# 也避免不同系统提交时把整个文件都标成改动。
+* text=auto eol=lf
+
+# 这些必须是字面内容，不能被换行转换污染
+*.png binary
+*.jpg binary
+*.docx binary
+*.pdf binary
+
+# GitHub 语言统计：把 HTML 模板和 CSS 归到 Jinja/CSS，不让 HTML 抢走 Python 的主语言位
+app/templates/*.html linguist-language=Jinja

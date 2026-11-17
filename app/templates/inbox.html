@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}跟进 · JobPilot{% endblock %}
+{% block content %}
+
+<h1>跟进</h1>
+<p class="lead">
+  发出去之后，问题不再是「该不该投」，而是<b>现在卡在谁手上</b>。
+  所以这一页不按分数排，按「欠了多久」排：60 分但对方等你回话的岗位，
+  比 84 分还没投的更急——前者有时效，后者没有。
+</p>
+
+<div class="stats">
+  <div class="stat"><b>{{ stats.due_me }}</b><span>等你回</span></div>
+  <div class="stat"><b>{{ stats.chase }}</b><span>该催了</span></div>
+  <div class="stat"><b>{{ stats.waiting }}</b><span>等对方</span></div>
+  <div class="stat"><b>{{ stats.todo }}</b><span>还没投</span></div>
+  <div class="stat"><b>{{ stats.closed }}</b><span>已结束</span></div>
+</div>
+
+{% if anomalies %}
+<div class="panel">
+  <div class="small">
+    <b>有 {{ anomalies|length }} 条岗位的状态和会话对不上</b>
+    <span class="muted">· 不自动修，因为得你来判断哪一边是真的</span>
+  </div>
+  <ul class="plain small muted" style="margin-top:8px">
+    {% for a in anomalies %}
+    <li style="margin-top:4px">
+      <a href="/jobs/{{ a.job.id }}#thread">{{ a.job.company or '未命名' }} · {{ a.job.title }}</a>
+      · {{ a.detail }}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if not (stats.due_me or stats.chase or stats.waiting or stats.todo) %}
+<div class="panel soft">
+  <div>还没有投递记录。</div>
+  <div class="small muted" style="margin-top:6px">
+    去<a href="/jobs">职位列表</a>挑一条，生成招呼语并在详情页点「标记已发送」——
+    那一刻起这条岗位才进入跟进流程。
+  </div>
+</div>
+{% endif %}
+
+{% macro card(c, kind) %}
+<div class="panel" id="job-{{ c.job.id }}">
+  <div style="display:flex; align-items:baseline; gap:12px; flex-wrap:wrap">
+    <div class="score {{ 'low' if c.job.status == 'blocked' }}" style="font-size:20px; min-width:48px">
+      {{ '%.0f'|format(c.score) }}
+    </div>
+    <div style="flex:1; min-width:220px">
+      <a href="/jobs/{{ c.job.id }}">{{ c.job.company or '（未解析到公司名）' }} · {{ c.job.title }}</a>
+      <div class="small muted">
+        {{ stage_cn.get(c.job.status, c.job.status) }}
+        {% if c.clock.badge %} · <span class="tag">{{ c.clock.badge }}</span>{% endif %}
+        {% if c.clock.their_last is not none %} · 对方最后一条 {{ '%.0f'|format(c.clock.their_last) }} 小时前{% endif %}
+        {% if c.clock.my_last is not none %} · 我最后一条 {{ '%.0f'|format(c.clock.my_last) }} 小时前{% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if c.last_in %}
+  <div style="margin-top:12px">
+    <div class="small muted">
+      对方说{% if c.intent_cn %} · <b>{{ c.intent_cn }}</b>{% endif %}
+    </div>
+    <div class="pre" style="margin-top:6px">{{ c.last_in.content }}</div>
+  </div>
+
+  {% if c.facts %}
+  <div style="margin-top:10px">
+    <div class="small muted">这段里能定下来的事</div>
+    {% for f in c.facts %}
+    <form method="post" action="/jobs/{{ c.job.id }}/adopt"
+          style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:6px">
+      <input type="hidden" name="key" value="{{ f.key }}">
+      <input type="hidden" name="value" value="{{ f.value }}">
+      <input type="hidden" name="message_id" value="{{ c.last_in.message_id or 0 }}">
+      <input type="hidden" name="quote" value="{{ f.quote }}">
+      <span class="small">{{ f.label }}</span>
+      {% if c.claims.get(f.key) %}
+        <span class="small muted">已采信</span>
+      {% else %}
+        <button class="tiny ghost" type="submit">采信并重算</button>
+      {% endif %}
+    </form>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="small muted" style="margin-top:12px">还没有对方的回复。</div>
+  {% endif %}
+
+  {% if c.draft %}
+  <div class="panel soft" style="margin-top:12px">
+    <div class="small muted">按上面这句，可以这样回（只引档案里有的东西）</div>
+    <div class="pre" id="draft-{{ c.job.id }}" style="margin-top:6px">{{ c.draft }}</div>
+    <div style="margin-top:10px">
+      <button class="tiny" type="button" onclick="copyFrom('draft-{{ c.job.id }}', this)">复制</button>
+    </div>
+  </div>
+  {% endif %}
+
+  <details style="margin-top:12px">
+    <summary class="small">记一条对方的消息／推进状态</summary>
+    <form method="post" action="/jobs/{{ c.job.id }}/reply" style="margin-top:10px">
+      <div class="field">
+        <label>HR 原话（粘过来就行，不用整理）</label>
+        <input type="text" name="content" placeholder="例：我们双休，每周 5 天，你什么时候能到岗？">
+      </div>
+      <button class="tiny" type="submit">记下</button>
+    </form>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px">
+      {% for stage, label in c.actions %}
+      <form class="inline" method="post" action="/jobs/{{ c.job.id }}/stage">
+        <input type="hidden" name="stage" value="{{ stage }}">
+        <button class="tiny ghost" type="submit">{{ label }}</button>
+      </form>
+      {% endfor %}
+    </div>
+  </details>
+</div>
+{% endmacro %}
+
+{% set sections = [
+  ('due_me', '对方回了，等你', '你还没回。过了 ' ~ reply_due ~ ' 小时就算失礼——这一组的时效性最强，所以排最前。'),
+  ('chase', '该催了', '发出去超过 ' ~ followup_hours ~ ' 小时没回音。超过 ' ~ cold_hours ~ ' 小时就是彻底凉了，别再等。'),
+  ('waiting', '等对方', '已经发出去，还没到该催的时候。'),
+  ('todo', '还没投', '已评分但还没发消息。这块没有时效压力，所以按分数排。'),
+  ('closed', '已结束', '给了 offer、被拒、或久无回音。留在这儿是为了以后复盘。')
+] %}
+
+{% for key, cn, why in sections %}
+  {% set rows = groups[key] %}
+  {% if rows %}
+  <h2>{{ cn }}（{{ rows|length }}）</h2>
+  <p class="small muted" style="margin-top:-4px">{{ why }}</p>
+  {% for c in rows %}{{ card(c, key) }}{% endfor %}
+  {% endif %}
+{% endfor %}
+
+<p class="hint">
+  为什么「等你回」排在最前：这一组每多放一小时，回复率就掉一截；而「还没投」放三天也不会变差。
+  按分数排会让后者永远压住前者，那是把「挑好的」和「别错过」混成一件事。
+</p>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copyFrom(id, btn) {
+  const box = document.getElementById(id);
+  if (!box) return;
+  const text = box.innerText;
+  const done = () => { btn.textContent = '已复制'; setTimeout(() => { btn.textContent = '复制'; }, 1500); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(() => fallback(id, done));
+  } else {
+    fallback(id, done);
+  }
+}
+function fallback(id, done) {
+  const box = document.getElementById(id);
+  const ta = document.createElement('textarea');
+  ta.value = box.innerText;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); done(); } catch (e) { /* 静默 */ }
+  document.body.removeChild(ta);
+}
+</script>
+{% endblock %}

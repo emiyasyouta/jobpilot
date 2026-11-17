@@ -1,0 +1,117 @@
+{
+  "_note": "示例档案，开源仓库里用的就是这份。真实使用时复制为 data/profile.json 后自行修改。所有字段中只有 verified=true 的素材会被写进招呼语和简历。",
+  "profile": {
+    "name": "张明",
+    "phone": "138-0000-0000",
+    "email": "example@mail.com",
+    "birth": "2005-04",
+    "ethnicity": "汉族",
+    "hometown": "江西赣州",
+    "city": "江西南昌",
+    "politics": "群众",
+    "school": "某应用型本科院校",
+    "college": "未来技术学院",
+    "major": "智能科学与技术",
+    "degree": "本科",
+    "edu_start": "2023-09",
+    "edu_end": "2027-06"
+  },
+  "items": [
+    {
+      "type": "internship",
+      "title": "AI 应用开发实习生",
+      "org": "某信息技术公司 · 技术部",
+      "start_date": "2026-08-12",
+      "end_date": "2026-09-09",
+      "verified": true,
+      "displayable": true,
+      "content_json": {
+        "pain": "模拟面试需要按岗位出题并给出可解释的评分",
+        "approach": "用 FastAPI 做后端，接大模型与语音识别合成；用 Dify 搭追问与能力评估工作流；前端 Vue3；交付 README 与一键启动脚本",
+        "result": "跑通按岗位出题、多轮追问、五维评分、报告导出整条链路，完成演示与答辩",
+        "keywords": ["FastAPI", "Dify", "工作流", "语音识别", "语音合成", "Vue3", "评分", "多轮", "智能体", "大模型"]
+      }
+    },
+    {
+      "type": "project",
+      "title": "LLM 测试用例生成工具",
+      "org": "个人项目",
+      "start_date": "2026-11",
+      "end_date": "2026-11",
+      "verified": true,
+      "displayable": true,
+      "content_json": {
+        "pain": "手写测试用例慢，且模型直接生成的用例格式乱、覆盖偏、重复多",
+        "approach": "Python 调大模型从需求文档批量生成用例；加四层工程约束：pydantic 结构校验、校验失败把报错原文回灌模型重写（最多 3 次）、功能/边界/异常/权限四类覆盖度检查不足则补轮、与历史用例字面相似度去重（≥0.85 判重）",
+        "result": "10 条用例端到端 8 秒，重复率 0；四类分布功能 2 边界 2 异常 4 权限 2；人工标注统计可用率",
+        "keywords": ["测试用例", "用例", "大模型", "需求文档", "校验", "覆盖度", "去重", "缺陷", "prompt", "评测", "自动化", "Python"]
+      }
+    },
+    {
+      "type": "project",
+      "title": "中文新闻文本分类实训",
+      "org": "课程实践",
+      "start_date": "2026-06",
+      "end_date": "2026-06",
+      "verified": true,
+      "displayable": true,
+      "content_json": {
+        "pain": "课程要求完成一个完整的监督学习流程",
+        "approach": "TF-IDF 提取特征，朴素贝叶斯构建分类器，独立完成数据清洗、数据集切分、训练与评估",
+        "result": "形成完整训练报告",
+        "keywords": ["TF-IDF", "朴素贝叶斯", "文本分类", "数据清洗", "模型训练", "评估"]
+      }
+    },
+    {
+      "type": "skill",
+      "title": "编程与工具",
+      "org": "",
+      "start_date": "",
+      "end_date": "",
+      "verified": true,
+      "displayable": true,
+      "content_json": {
+        "detail": "Python（主力）、FastAPI、Vue3、MySQL 多表查询与执行计划、Linux 与 shell、Git、Docker 基础",
+        "keywords": ["Python", "FastAPI", "Vue3", "MySQL", "SQL", "多表查询", "Linux", "shell", "Git", "Docker", "接口"]
+      }
+    },
+    {
+      "type": "course",
+      "title": "主修课程",
+      "org": "",
+      "start_date": "",
+      "end_date": "",
+      "verified": true,
+      "displayable": false,
+      "content_json": {
+        "detail": "机器学习、深度学习技术与应用、人工智能应用、数据分析与可视化、数据挖掘、OpenCV 图像处理与应用、数据结构、数据库原理与应用、计算机网络、计算机组成原理、编译原理、计算方法",
+        "keywords": ["机器学习", "深度学习", "数据分析", "数据挖掘", "OpenCV", "数据结构", "数据库", "计算机网络", "编译原理"]
+      }
+    },
+    {
+      "type": "cert",
+      "title": "证书",
+      "org": "",
+      "start_date": "",
+      "end_date": "",
+      "verified": true,
+      "displayable": true,
+      "content_json": {
+        "detail": "CET-4（500 分）、高级人工智能训练师、普通话三级甲等、C1 驾驶证",
+        "keywords": ["CET-4", "人工智能训练师", "普通话", "C1"]
+      }
+    }
+  ],
+  "preference": {
+    "cities_json": ["南昌", "赣州", "长沙", "武汉", "杭州", "广州", "深圳"],
+    "must_weekend_off": true,
+    "must_remote_interview": true,
+    "must_certificate": true,
+    "available_from": "2026-11-23",
+    "available_to": "2027-02-28",
+    "remote_available_to": "2027-05-31",
+    "min_salary": 100,
+    "direction_weights_json": {"测试": 1.0, "AI应用": 0.9, "实施": 0.7, "运维": 0.6},
+    "exclude_keywords_json": ["地推", "电话销售", "课程顾问"]
+  }
+}

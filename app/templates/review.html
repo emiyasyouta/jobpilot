@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% block title %}待确认 · JobPilot{% endblock %}
+{% block content %}
+
+<h1>待确认</h1>
+<p class="lead">
+  规则保证同一份 JD 永远得到同一个判断，但保证不了判断永远对。所以这里只放两类：
+  <b>规则没把握的</b>，和<b>判错代价高的</b>。方向分低于 30 的岗位不进这张单子——
+  规则就算判错，你也不会投它，放进待办只是制造负担。
+</p>
+
+<div class="stats">
+  <div class="stat"><b>{{ total }}</b><span>待你确认</span></div>
+  <div class="stat"><b>{{ waiting|length }}</b><span>在等回复</span></div>
+  <div class="stat"><b>{{ overturned }}</b><span>已改判可投</span></div>
+  <div class="stat"><b>{{ done }}</b><span>最近已确认</span></div>
+</div>
+
+{% if not groups %}
+<div class="panel soft">
+  <div>没有需要你确认的岗位。</div>
+  <div class="small muted" style="margin-top:6px">
+    这不代表规则都对，只代表没有一条的误判代价高到值得你看一遍。
+    想抽查，去<a href="/jobs">职位列表</a>按分数看。
+  </div>
+</div>
+{% endif %}
+
+{% if shown < total %}
+  <p class="hint">共 {{ total }} 条，这里显示代价最高的 {{ shown }} 条。处理完再回来。</p>
+{% endif %}
+
+{% for g in groups %}
+<h2>{{ g.cn }}（{{ g.rows|length }}）</h2>
+<p class="small muted" style="margin-top:-4px">{{ g.why }}</p>
+
+{% for it in g.rows %}
+<div class="panel" id="job-{{ it.job.id }}">
+  <div style="display:flex; align-items:baseline; gap:12px; flex-wrap:wrap">
+    <div class="score {{ 'low' if it.blocked }}" style="font-size:22px; min-width:52px">
+      {% if it.blocked %}阻断{% else %}{{ '%.0f'|format(it.score or 0) }}{% endif %}
+    </div>
+    <div>
+      <a href="/jobs/{{ it.job.id }}">{{ it.job.company or '（未解析到公司名）' }} · {{ it.job.title }}</a>
+      <div class="small muted">{{ it.facts|join(' · ') }}</div>
+    </div>
+  </div>
+
+  <div class="small" style="margin:12px 0 6px">{{ it.question }}</div>
+  {% if it.evidence %}
+  <div class="small muted">
+    原文证据：{% for e in it.evidence %}「{{ e }}」{% endfor %}
+  </div>
+  {% endif %}
+
+  {% if it.bucket == 'gap' %}
+  <div class="small muted" style="margin-top:10px">
+    JD 里没有的答案只能问出来。
+    <a href="/review?ask={{ it.job.id }}#job-{{ it.job.id }}">生成问 HR 的话术</a>
+  </div>
+  {% endif %}
+
+  {% if ask_panel and ask_panel.content and ask_job_id == it.job.id %}
+  <div class="panel soft" style="margin-top:12px">
+    <div class="small muted">发给 HR · 可整段复制</div>
+    <div class="pre" id="ask-text" style="margin-top:6px">{{ ask_panel.content }}</div>
+    <div style="margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap">
+      <button class="tiny" type="button" onclick="copyAsk(this)">复制</button>
+      <span class="small muted">{{ ask_panel.verdict_text }}</span>
+    </div>
+    {% if ask_panel.why %}
+    <div style="margin-top:12px">
+      <div class="small muted">为什么是这两问</div>
+      <ul class="plain small muted">
+        {% for w in ask_panel.why %}<li>{{ w }}</li>{% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+    <div class="hint">
+      建议接在招呼语之后发：先让对方知道你投的是什么，再问工时。
+      Boss 上第一条消息只问问题，回复率会明显低。
+    </div>
+  </div>
+  {% endif %}
+
+  <form method="post" action="/review/{{ it.job.id }}" style="margin-top:14px">
+    <input type="hidden" name="bucket" value="{{ it.bucket }}">
+    <div class="field">
+      <label>备注（写清你为什么这么判，以后翻得到）</label>
+      <input type="text" name="note"
+             placeholder="例：电话确认转正后双休 / 招生老师加我要 6800 实训费 / JD 写的是外包驻场">
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap">
+      {% for decision, label in it.actions %}
+        <button type="submit" name="decision" value="{{ decision }}"
+                class="tiny ghost">{{ label }}</button>
+      {% endfor %}
+      <a class="btn tiny ghost" href="/jobs/{{ it.job.id }}" style="padding:3px 10px">看完整 JD</a>
+    </div>
+  </form>
+</div>
+{% endfor %}
+{% endfor %}
+
+{% if waiting %}
+<h2>在等回复（{{ waiting|length }}）</h2>
+<p class="small muted" style="margin-top:-4px">
+  这些岗位已经不在上面的队列里，但事没完——工时还欠 HR 一句话。
+  <b>等待不是证据</b>，所以分数一分没动；等回复到了，把答案补进 JD 重新评估，规则会自己判。
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>公司 / 岗位</th>
+      <th style="width:70px">分值</th>
+      <th style="width:80px">等了</th>
+      <th>备注</th>
+      <th style="width:150px"></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for w in waiting %}
+    <tr>
+      <td><a href="/jobs/{{ w.job.id }}">{{ w.job.company or '（未解析到公司名）' }} · {{ w.job.title }}</a></td>
+      <td class="small">{{ '%.1f'|format(w.job.latest_match.score) if w.job.latest_match else '—' }}</td>
+      <td class="small {{ 'blocked-text' if w.days >= 3 else 'muted' }}">
+        {{ w.days }} 天{% if w.days >= 3 %} · 该催了{% endif %}
+      </td>
+      <td class="small muted">{{ w.rv.note or '—' }}</td>
+      <td>
+        <a class="btn tiny ghost" href="/review?ask={{ w.job.id }}#job-{{ w.job.id }}"
+           style="padding:3px 10px">话术</a>
+        <a class="btn tiny ghost" href="/jobs/{{ w.job.id }}" style="padding:3px 10px">补录答案</a>
+        <form class="inline" method="post" action="/review/{{ w.job.id }}/reset">
+          <button class="tiny ghost" type="submit" title="撤销后回到上面的队列">回队列</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="hint">
+  「回队列」和撤销是同一个动作：撤销人工判断、这条重新排队。
+  为什么不做个「已回复」按钮直接关掉——因为工时的答案必须落到 JD 上，
+  否则下一次重算它还是 unknown，等于把同一个问题又挂起来一次。
+</p>
+{% endif %}
+
+{% if done_rows %}
+<h2>最近的人工判断</h2>
+<table>
+  <thead>
+    <tr>
+      <th style="width:90px">判断</th>
+      <th>公司 / 岗位</th>
+      <th>备注</th>
+      <th style="width:100px">时间</th>
+      <th style="width:70px"></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for row in done_rows %}
+    <tr>
+      <td class="small {{ 'blocked-text' if row.rv.decision == 'block' else '' }}">
+        {{ decision_cn.get(row.rv.decision, row.rv.decision) }}
+      </td>
+      <td>
+        {% if row.job %}
+          <a href="/jobs/{{ row.job.id }}">{{ row.job.company }} · {{ row.job.title }}</a>
+        {% else %}—{% endif %}
+      </td>
+      <td class="small muted">{{ row.rv.note or '—' }}</td>
+      <td class="small muted">{{ row.rv.at.strftime('%m-%d %H:%M') }}</td>
+      <td>
+        {% if row.job %}
+        <form class="inline" method="post" action="/review/{{ row.job.id }}/reset">
+          <button class="tiny ghost" type="submit">撤销</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="hint">
+  撤销后回到纯规则判断，这条岗位会重新回到上面的队列里。
+  留痕不删——同一个岗位的历次判断都留在库里，包括被撤销的那些。
+</p>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 复制一段话术。clipboard API 在 localhost 上可用，但部分浏览器会拒绝——
+// 失败就退回选中 + execCommand，保证按下去一定有反应。
+function copyAsk(btn) {
+  const box = document.getElementById('ask-text');
+  if (!box) return;
+  const text = box.innerText;
+  const done = () => { btn.textContent = '已复制'; setTimeout(() => { btn.textContent = '复制'; }, 1500); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+  } else {
+    fallbackCopy(text, done);
+  }
+}
+function fallbackCopy(text, done) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); done(); } catch (e) { /* 静默：用户可手动选中 */ }
+  document.body.removeChild(ta);
+}
+</script>
+{% endblock %}

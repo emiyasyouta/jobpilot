@@ -1,0 +1,336 @@
+{% extends "base.html" %}
+{% block title %}{{ job.company }} · {{ job.title }}{% endblock %}
+{% block content %}
+
+<p class="small muted"><a href="/jobs">← 返回职位列表</a></p>
+
+<h1>{{ job.company }} · {{ job.title }}</h1>
+<p class="lead">
+  {{ job.city }}{% if job.district %} {{ job.district }}{% endif %}
+  {% if job.salary_min %} · {{ job.salary_min|int }}–{{ job.salary_max|int }}
+    {{ {'day':'元/天','month':'元/月','year':'元/年'}.get(job.salary_unit, '') }}{% endif %}
+  {% if job.hr_name %} · 对接人 {{ job.hr_name }}{% endif %}
+</p>
+
+<h2>匹配结论</h2>
+<div class="panel">
+  <div style="display:flex; align-items:baseline; gap:14px">
+    <div class="score {{ 'low' if match.blocked }}" style="font-size:36px; line-height:1">
+      {% if match.blocked %}—{% else %}{{ '%.0f'|format(match.score) }}{% endif %}
+    </div>
+    <div>
+      {% if match.blocked %}
+        <div class="blocked-text"><b>硬约束不满足，不建议投递</b></div>
+        <div class="small muted">{{ match.blocked_reason }}</div>
+      {% else %}
+        <div class="small muted">满分 100。方向与风险是否决项而非加分项，因此单项不合格会直接压低总分。</div>
+      {% endif %}
+    </div>
+  </div>
+  <div style="margin-top:12px" class="small">{{ match.reason_text }}</div>
+</div>
+
+{% if verdict.review %}
+<div class="panel soft">
+  <div class="small">
+    <b>人工判断：{{ decision_cn.get(verdict.review.decision, verdict.review.decision) }}</b>
+    <span class="muted">· {{ verdict.review.at.strftime('%Y-%m-%d %H:%M') }}</span>
+  </div>
+  {% if verdict.review.note %}
+    <div class="small muted" style="margin-top:4px">{{ verdict.review.note }}</div>
+  {% endif %}
+  {% if ignored_labels %}
+    <div class="small muted" style="margin-top:4px">
+      已推翻规则：{{ ignored_labels|join('、') }} —— 这几条不再参与打分与阻断，
+      但规则以后升级出的新命中照样生效。
+    </div>
+  {% endif %}
+  {% if verdict.review.decision == 'block' %}
+    <div class="small muted" style="margin-top:4px">
+      人工否决在规则之上：即使规则放行，这条也不投。
+    </div>
+  {% endif %}
+  {% if verdict.review.decision == 'wait' %}
+    <div class="small muted" style="margin-top:4px">
+      HR 的答复到了，就把工时写进页面底部的补录框重新评分——
+      <b>等待本身不改分数</b>，改了分数的永远是 JD 原文。
+    </div>
+  {% endif %}
+  <form method="post" action="/review/{{ job.id }}/reset" style="margin-top:10px">
+    <button class="tiny ghost" type="submit">撤销人工判断，回到纯规则</button>
+  </form>
+</div>
+{% elif match.blocked %}
+<p class="small muted">
+  若你认为这条是规则读错了（例如 HR 已确认双休），去<a href="/review">待确认</a>改判，
+  或直接在这里补录新的 JD 原文重新评分。
+</p>
+{% endif %}
+
+<h2>四维拆解</h2>
+{% set dim_cn = {'direction':'方向匹配','time':'时间可行','threshold':'门槛匹配','risk':'风险'} %}
+<table>
+  <thead><tr><th style="width:100px">维度</th><th style="width:60px">得分</th><th>依据</th></tr></thead>
+  <tbody>
+  {% for key, label in [('direction','方向匹配'),('time','时间可行'),('threshold','门槛匹配'),('risk','风险')] %}
+    {% set d = dims.get(key, {}) %}
+    <tr>
+      <td>{{ label }}</td>
+      <td><b>{{ d.get('score', '—') }}</b></td>
+      <td class="small">
+        {{ d.get('reason', '') }}
+        <div class="dimbar" style="max-width:240px"><i style="width:{{ d.get('score', 0) }}%"></i></div>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% if dims.get('direction', {}).get('hits') %}
+<div class="panel soft">
+  <div class="small" style="font-weight:700; margin-bottom:6px">方向分是怎么来的</div>
+  {% for h in dims['direction']['hits'] %}
+    <div class="small" style="margin:3px 0">
+      <b>{{ h.name }}</b>（{{ h.type }}）命中 {{ h.matched|join('、') }} —— 贡献 {{ h.gained }} 分
+    </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2>规则命中</h2>
+{% if findings %}
+<table>
+  <thead><tr><th style="width:150px">规则</th><th style="width:70px">级别</th><th>说明与证据</th></tr></thead>
+  <tbody>
+  {% for f in findings %}
+    <tr>
+      <td class="small">
+        {{ f.label }}
+        {% if f.rule_id in ignored %}<span class="tag">已推翻</span>{% endif %}
+      </td>
+      <td class="small {{ 'blocked-text' if f.level == 'hard_block' else 'muted' }}">
+        {{ {'hard_block':'阻断','high':'高','medium':'中','low':'低'}.get(f.level, f.level) }}
+      </td>
+      <td class="small">
+        {{ f.detail }}
+        {% if f.evidence %}
+          <div class="muted" style="margin-top:3px">证据：{{ f.evidence|join(' / ') }}</div>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted small">未命中任何风险规则。这不等于没问题——JD 没写的信息（比如是否双休）仍是面试要问的。</p>
+{% endif %}
+
+<h2>招呼语</h2>
+<div style="display:flex; gap:10px; margin-bottom:12px">
+  <form method="post" action="/jobs/{{ job.id }}/greet">
+    <button type="submit" {{ 'disabled' if match.blocked }}>
+      {{ '重新生成' if greetings else '生成招呼语' }}
+    </button>
+  </form>
+  <form method="post" action="/jobs/{{ job.id }}/resume">
+    <button class="ghost" type="submit">导出针对性简历（.docx）</button>
+  </form>
+</div>
+{% if match.blocked %}
+  <p class="small err">该岗位被硬约束阻断，生成按钮已禁用。若你确认可以接受（例如对方后来答应了双休），先在档案里调整约束再回来。</p>
+{% endif %}
+
+{% for g in greetings %}
+  <div class="panel">
+    <div class="small muted" style="margin-bottom:8px">
+      版本 {{ g.variant }} · 生成于 {{ g.created_at.strftime('%m-%d %H:%M') }} · {{ g.model }}
+      {% if g.is_sent %}<span class="tag">已标记投递</span>{% endif %}
+    </div>
+    <div class="pre">{{ g.content }}</div>
+
+    {% if g.rationale %}
+      <details style="margin-top:10px">
+        <summary class="small muted" style="cursor:pointer">生成理由与校验结果</summary>
+        <div class="small muted" style="margin-top:8px; white-space:pre-wrap">{{ g.rationale }}</div>
+      </details>
+    {% endif %}
+
+    <div style="margin-top:12px">
+      {% if not g.is_sent %}
+      <form class="inline" method="post" action="/greetings/{{ g.id }}/mark_sent">
+        <button class="tiny" type="submit">我已发送，标记投递</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+{% else %}
+  <p class="muted small">还没有生成。生成后你会看到正文、生成理由，以及事实校验的结果——校验不通过的段落会标红，需先改档案或改写再发。</p>
+{% endfor %}
+
+<h2 id="thread">投递进展</h2>
+
+<div class="panel soft">
+  <div style="display:flex; gap:14px; align-items:baseline; flex-wrap:wrap">
+    <div><b>{{ stage_cn.get(job.status, job.status) }}</b></div>
+    <div class="small muted">
+      {% if clk.my_last is not none %}我最后一条 {{ '%.0f'|format(clk.my_last) }} 小时前{% endif %}
+      {% if clk.their_last is not none %} · 对方最后一条 {{ '%.0f'|format(clk.their_last) }} 小时前{% endif %}
+      {% if clk.badge %} · <span class="tag">{{ clk.badge }}</span>{% endif %}
+    </div>
+  </div>
+  <div class="small muted" style="margin-top:6px">
+    这一栏只回答一个问题：<b>现在卡在谁手上。</b>
+    状态由事实推进——你记一条对方的消息，状态就自己变成「对方已回」；
+    不需要谁去点「标记为已回复」，那种要人手动维护的状态，三天后一定是错的。
+  </div>
+  <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px">
+    {% for stage, label in next_stages %}
+    <form class="inline" method="post" action="/jobs/{{ job.id }}/stage">
+      <input type="hidden" name="stage" value="{{ stage }}">
+      <button class="tiny ghost" type="submit">{{ label }}</button>
+    </form>
+    {% endfor %}
+  </div>
+</div>
+
+{% if turns %}
+<div class="panel">
+  <div class="small muted" style="margin-bottom:8px">会话 · {{ turns|length }} 条</div>
+  {% for t in turns %}
+  <div style="margin-top:10px; padding-left:10px; border-left:2px solid var(--line)">
+    <div class="small muted">
+      {{ '我' if t.direction == 'out' else '对方' }}
+      · {{ t.at.strftime('%m-%d %H:%M') if t.at else '' }}
+      {% if t.is_greeting %} · 招呼语{% endif %}
+    </div>
+    <div class="small" style="white-space:pre-wrap; margin-top:4px">{{ t.content }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="panel">
+  <div class="small muted">把 HR 的回话粘进来（不用整理，原文最好）</div>
+  <form method="post" action="/jobs/{{ job.id }}/reply" style="margin-top:10px">
+    <div class="field">
+      <label>HR 说了什么</label>
+      <input type="text" name="content" placeholder="例：我们双休，每周 5 天，你什么时候能到岗？">
+    </div>
+    <button class="tiny" type="submit">记下并推进状态</button>
+  </form>
+  <div class="hint">
+    记下来之后，这段里能定下来的事（工时、薪资、能不能开证明）会被抽出来列在下面，
+    但<b>不会自动改分</b>——HR 说「双休」而 JD 写着「单休」时，谁对得你拍板。
+  </div>
+</div>
+
+{% if intent and intent != 'unclear' %}
+<div class="panel">
+  <div class="small">
+    对方这条消息的意图：<b>{{ intent_cn.get(intent, intent) }}</b>
+  </div>
+  {% if draft %}
+  <div class="pre" id="draft-detail" style="margin-top:10px">{{ draft }}</div>
+  <div style="margin-top:10px">
+    <button class="tiny" type="button" onclick="copyFrom('draft-detail', this)">复制</button>
+  </div>
+  {% elif intent == 'reject' %}
+  <div class="small muted" style="margin-top:8px">被拒的岗不用回。直接在上面点「谈崩／被拒」收工。</div>
+  {% else %}
+  <div class="small muted" style="margin-top:8px">这条看出要你做什么，但档案里缺拼这句话的信息，所以不给模板——自己写比发残句好。</div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if facts %}
+<div class="panel">
+  <div class="small muted">这段回复里能定下来的事</div>
+  {% for f in facts %}
+  <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:10px">
+    <div class="small">{{ f.label }}</div>
+    {% if hr_facts.get(f.key) %}
+      <span class="tag">已采信</span>
+      <form class="inline" method="post" action="/jobs/{{ job.id }}/adopt/forget">
+        <input type="hidden" name="key" value="{{ f.key }}">
+        <button class="tiny ghost" type="submit">撤销采信</button>
+      </form>
+    {% else %}
+      <form class="inline" method="post" action="/jobs/{{ job.id }}/adopt">
+        <input type="hidden" name="key" value="{{ f.key }}">
+        <input type="hidden" name="value" value="{{ f.value }}">
+        <input type="hidden" name="message_id" value="{{ last_in.message_id or 0 }}">
+        <input type="hidden" name="quote" value="{{ f.quote }}">
+        <button class="tiny" type="submit">采信并重算</button>
+      </form>
+    {% endif %}
+    <div class="small muted">原文「{{ f.quote }}」</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if hr_facts %}
+<div class="panel soft">
+  <div class="small muted">已采信的 HR 口述事实（优先级高于平台字段和 JD 正文）</div>
+  <table style="margin-top:8px">
+    <thead><tr><th style="width:110px">项</th><th style="width:90px">值</th><th>原话</th><th style="width:150px">采信时间</th></tr></thead>
+    <tbody>
+    {% for key, f in hr_facts.items() %}
+      <tr>
+        <td class="small">{{ key }}</td>
+        <td class="small">{{ '可以开' if f.value is sameas true else ('开不了' if f.value is sameas false else f.value) }}</td>
+        <td class="small muted">「{{ f.quote or '（无原文）' }}」</td>
+        <td class="small muted">{{ (f.at or '').replace('T', ' ') }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<h2>JD 原文</h2>
+{% if (job.jd_text|length) < 60 %}
+<p class="small err">只有 {{ job.jd_text|length }} 字——职位描述不完整时，门槛与风险两项都是「没看见问题」而不是「没有问题」，
+分数因此被压在 45 分上限。粘贴完整 JD 保存后会立即重算。</p>
+{% endif %}
+<div class="pre">{{ job.jd_text }}</div>
+
+<details class="panel" style="margin-top:14px">
+  <summary class="small" style="cursor:pointer; font-weight:700">补录 / 修正 JD 正文，保存后重新评分</summary>
+  <form method="post" action="/jobs/{{ job.id }}/jd" style="margin-top:12px">
+    <div class="field">
+      <label>JD 原文（把岗位职责与任职要求整段粘进来）</label>
+      <textarea name="jd_text" style="min-height:180px">{{ job.jd_text }}</textarea>
+    </div>
+    <button type="submit">保存并重算</button>
+  </form>
+</details>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copyFrom(id, btn) {
+  const box = document.getElementById(id);
+  if (!box) return;
+  const text = box.innerText;
+  const done = () => { btn.textContent = '已复制'; setTimeout(() => { btn.textContent = '复制'; }, 1500); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(() => fallback(id, done));
+  } else {
+    fallback(id, done);
+  }
+}
+function fallback(id, done) {
+  const box = document.getElementById(id);
+  const ta = document.createElement('textarea');
+  ta.value = box.innerText;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); done(); } catch (e) { /* 静默 */ }
+  document.body.removeChild(ta);
+}
+</script>
+{% endblock %}

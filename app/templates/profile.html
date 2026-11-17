@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}档案 · JobPilot{% endblock %}
+{% block content %}
+
+<h1>档案</h1>
+<p class="lead">
+  这里是全站唯一的事实来源。下面每条素材都有「可信」开关，<b>未勾选的素材不会进入任何生成内容</b>。
+  这条约束是产品里最重要的一行代码，因为它决定了这个工具会不会帮你编简历。
+</p>
+
+<form method="post" action="/profile">
+  <h2>基本信息</h2>
+  <div class="grid3">
+    <div class="field"><label>姓名</label><input type="text" name="name" value="{{ profile.name if profile else '' }}"></div>
+    <div class="field"><label>电话</label><input type="text" name="phone" value="{{ profile.phone if profile else '' }}"></div>
+    <div class="field"><label>邮箱</label><input type="text" name="email" value="{{ profile.email if profile else '' }}"></div>
+  </div>
+  <div class="grid3">
+    <div class="field"><label>出生年月</label><input type="text" name="birth" placeholder="2005-04" value="{{ profile.birth if profile else '' }}"></div>
+    <div class="field"><label>民族</label><input type="text" name="ethnicity" value="{{ profile.ethnicity if profile else '' }}"></div>
+    <div class="field"><label>政治面貌</label><input type="text" name="politics" value="{{ profile.politics if profile else '' }}"></div>
+  </div>
+  <div class="grid2">
+    <div class="field"><label>籍贯</label><input type="text" name="hometown" value="{{ profile.hometown if profile else '' }}"></div>
+    <div class="field"><label>现居 / 求职地</label><input type="text" name="city" value="{{ profile.city if profile else '' }}"></div>
+  </div>
+
+  <h2>教育</h2>
+  <div class="grid2">
+    <div class="field"><label>学校</label><input type="text" name="school" value="{{ profile.school if profile else '' }}"></div>
+    <div class="field"><label>学院</label><input type="text" name="college" value="{{ profile.college if profile else '' }}"></div>
+  </div>
+  <div class="grid3">
+    <div class="field"><label>专业</label><input type="text" name="major" value="{{ profile.major if profile else '' }}"></div>
+    <div class="field"><label>学历</label><input type="text" name="degree" value="{{ profile.degree if profile else '' }}"></div>
+    <div class="field"><label>&nbsp;</label><div class="small muted">学位与学制写在学历里即可</div></div>
+  </div>
+  <div class="grid2">
+    <div class="field"><label>入学（年-月）</label><input type="text" name="edu_start" placeholder="2023-09" value="{{ profile.edu_start if profile else '' }}"></div>
+    <div class="field"><label>毕业（年-月）</label><input type="text" name="edu_end" placeholder="2027-06" value="{{ profile.edu_end if profile else '' }}"></div>
+  </div>
+
+  <h2>求职时间约束</h2>
+  <div class="grid3">
+    <div class="field"><label>可到岗</label><input type="date" name="available_from" value="{{ pref.available_from if pref else '' }}"></div>
+    <div class="field"><label>最晚结束（不远程）</label><input type="date" name="available_to" value="{{ pref.available_to if pref else '' }}"></div>
+    <div class="field"><label>最晚结束（可远程）</label><input type="date" name="remote_available_to" value="{{ pref.remote_available_to if pref else '' }}"></div>
+  </div>
+  <div class="small muted" style="margin-bottom:10px">
+    这三项直接决定「时间可行」那一维的分数。远程能延长时间的话，务必填第三项——它会自动放宽长周期岗位。
+  </div>
+  <div class="grid3">
+    <div class="field">
+      <label><input type="checkbox" name="must_weekend_off" {{ 'checked' if pref and pref.must_weekend_off }}> 必须双休</label>
+      <label><input type="checkbox" name="must_remote_interview" {{ 'checked' if pref and pref.must_remote_interview }}> 必须可远程面试</label>
+      <label><input type="checkbox" name="must_certificate" {{ 'checked' if pref and pref.must_certificate }}> 必须可开实习证明</label>
+    </div>
+  </div>
+
+  <button type="submit">保存档案</button>
+</form>
+
+<h2>素材（{{ items|length }} 条）</h2>
+<table>
+  <thead>
+    <tr><th style="width:70px">类型</th><th>标题 / 内容</th><th style="width:90px">可信</th></tr>
+  </thead>
+  <tbody>
+  {% set type_cn = {'course':'课程','internship':'实习','project':'项目','skill':'技能','cert':'证书'} %}
+  {% for it in items %}
+    <tr>
+      <td class="muted">{{ type_cn.get(it.type, it.type) }}</td>
+      <td>
+        <b>{{ it.title }}</b>
+        {% if it.org %}<span class="muted"> · {{ it.org }}</span>{% endif %}
+        {% if it.start_date %}<span class="muted small"> · {{ it.start_date }}–{{ it.end_date or '至今' }}</span>{% endif %}
+        {% set c = it.content_json or {} %}
+        {% for k in ['pain','approach','result','detail'] %}
+          {% if c.get(k) %}
+            <div class="small muted" style="margin-top:2px">
+              {{ {'pain':'问题','approach':'做法','result':'结果','detail':'内容'}[k] }}：{{ c[k] }}
+            </div>
+          {% endif %}
+        {% endfor %}
+      </td>
+      <td>
+        <form method="post" action="/profile/item/{{ it.id }}/verify">
+          <button class="tiny {{ 'ghost' if not it.verified }}" type="submit">
+            {{ '已核验' if it.verified else '未核验' }}
+          </button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<div class="hint">
+  示例数据是脱敏后的结构，替换成你自己的内容时，注意「结果」一栏尽量写数字——
+  有数字的事实最难被质疑，也最容易被记住。
+</div>
+
+{% endblock %}
