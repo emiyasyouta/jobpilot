@@ -6,11 +6,11 @@
     "email": "example@mail.com",
     "birth": "2005-04",
     "ethnicity": "汉族",
-    "hometown": "江西赣州",
+    "hometown": "江西某市",
     "city": "江西南昌",
     "politics": "群众",
     "school": "某应用型本科院校",
-    "college": "未来技术学院",
+    "college": "某学院",
     "major": "智能科学与技术",
     "degree": "本科",
     "edu_start": "2023-09",
@@ -21,8 +21,8 @@
       "type": "internship",
       "title": "AI 应用开发实习生",
       "org": "某信息技术公司 · 技术部",
-      "start_date": "2026-08-12",
-      "end_date": "2026-09-09",
+      "start_date": "2026-08-03",
+      "end_date": "2026-08-31",
       "verified": true,
       "displayable": true,
       "content_json": {
@@ -97,7 +97,7 @@
       "verified": true,
       "displayable": true,
       "content_json": {
-        "detail": "CET-4（500 分）、高级人工智能训练师、普通话三级甲等、C1 驾驶证",
+        "detail": "CET-4、人工智能训练师、普通话等级证书、C1 驾驶证",
         "keywords": ["CET-4", "人工智能训练师", "普通话", "C1"]
       }
     }
