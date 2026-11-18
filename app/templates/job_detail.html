@@ -30,14 +30,22 @@
   <div style="margin-top:12px" class="small">{{ match.reason_text }}</div>
 </div>
 
-{% if (job.raw_json or {}).get('three_party_status') == '待确认' %}
+{% set tp = (job.raw_json or {}).get('three_party_status') %}
+{% if tp %}
 <div class="panel soft">
+  {% if tp == '待确认' %}
   <div class="small"><b>三方协议待确认</b><span class="muted"> · 本次放宽只卡这一条，投前问清楚能否签</span></div>
+  {% else %}
+  <div class="small"><b>三方协议：{{ tp }}</b><span class="muted"> · 问过了，等对方答复</span></div>
+  {% endif %}
   {% if job.raw_json.checked_1118 %}
   <div class="small muted" style="margin-top:4px">{{ job.raw_json.checked_1118 }}</div>
   {% endif %}
   {% if job.raw_json.advice_1118 %}
   <div class="small muted" style="margin-top:4px">{{ job.raw_json.advice_1118 }}</div>
+  {% endif %}
+  {% if job.raw_json.sent_1118 %}
+  <div class="small muted" style="margin-top:4px">{{ job.raw_json.sent_1118 }}</div>
   {% endif %}
 </div>
 {% endif %}
