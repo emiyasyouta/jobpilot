@@ -100,6 +100,7 @@ python selftest_precision.py    # 精度：正常岗位有没有被误伤，23 �
 python selftest_fetch.py        # 抓取解析：字段级断言，53 项（含真实快照）
 python selftest_review.py       # 人工确认：改判生效 / 重算不丢 / 撤销可回 / 等回复不改判定，38 项
 python selftest_pipeline.py     # 投递跟进：状态机 / 时效 / 抽取 / 采信改分 / 一致性 / 提醒，93 项
+python selftest_chase.py        # 统一催办：话术不编造 / 名单只收该催的 / 记账幂等，17 项
 ```
 
 这是最省事的验收方式——面试官 clone 后第一条命令就能看到结果。
@@ -339,6 +340,29 @@ schtasks /create /tn JobPilot提醒 /tr "python -m app.remind" /sc hourly /mo 4
   且不设 snooze——**这些提醒背后的情形已经不存在了，不是「你知道了」**。
 
 提醒落库在 `alerts` 表，关掉不等于删掉：`ack_at` 留着，出事能回溯。
+
+### 统一催一轮（`app.chase`）
+
+提醒只负责喊你，真正动手的那一下还有一个坑：**九条岗位、九个会话、同一句话。**
+人手点不是打字累，是点完就忘了记账——消息发出去了，库里还停在「等回音（18 小时前）」，
+明天照催，而你会以为是系统坏了。
+
+```bash
+python -m app.chase                 # 看名单和话术，不改任何东西
+python -m app.chase --json          # 给自动化消费
+python -m app.chase --sent 36 37    # 发完了，记一笔
+```
+
+`--sent` 做两件事：把这句话记成一条 out 消息（时钟自然重置，18 小时后才重新进名单），
+并把该岗位还挂着的提醒关掉。**记账幂等**——同一句话不会记第二遍，否则重跑一次就多发一遍。
+
+话术里的日期从 `preferences.available_from/available_to` 读，不写在文案里。
+理由很朴素：这两个日期改了，九条话术不会跟着一起变成假话。`selftest_chase.py`
+专门盯着这一条，顺带盯着「不含没有出处的承诺」。
+
+要不要让它自己发？**发送这一步仍然交给人或浏览器自动化，命令只准备话术和记账。**
+把「说什么」和「发出去」分开，是因为后者出错的方式（点错人、发重、被风控）需要当场看见，
+而前者可以提前审。
 
 ### 回复草稿
 
@@ -605,6 +629,7 @@ selftest_precision.py    精度自检（正常岗位会不会被误杀）+ 4 条
 selftest_fetch.py        抓取解析自检（字段级断言）
 selftest_review.py       人工确认自检（改判生效 / 重算不丢 / 撤销可回）
 selftest_pipeline.py     投递跟进自检（状态机 / 时效 / 抽取 / 采信 / 一致性 / 提醒）
+selftest_chase.py        统一催办自检（话术不编造 / 名单口径 / 记账幂等）
 ```
 
 ## License
