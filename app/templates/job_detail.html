@@ -30,6 +30,18 @@
   <div style="margin-top:12px" class="small">{{ match.reason_text }}</div>
 </div>
 
+{% if (job.raw_json or {}).get('three_party_status') == '待确认' %}
+<div class="panel soft">
+  <div class="small"><b>三方协议待确认</b><span class="muted"> · 本次放宽只卡这一条，投前问清楚能否签</span></div>
+  {% if job.raw_json.checked_1118 %}
+  <div class="small muted" style="margin-top:4px">{{ job.raw_json.checked_1118 }}</div>
+  {% endif %}
+  {% if job.raw_json.advice_1118 %}
+  <div class="small muted" style="margin-top:4px">{{ job.raw_json.advice_1118 }}</div>
+  {% endif %}
+</div>
+{% endif %}
+
 {% if (job.raw_json or {}).get('backup') %}
 <div class="panel soft">
   <div class="small"><b>保底备选</b><span class="muted"> · 平时不催，正式选项落空后再启用</span></div>
