@@ -41,3 +41,6 @@ Thumbs.db
 
 # 抓取产物：本地校准用，随时会重新生成，不进仓库
 fixtures/boss/real/
+
+# 工作区记忆目录，属于本地工具链产物，不是项目源码
+.workbuddy/
