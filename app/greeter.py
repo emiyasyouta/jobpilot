@@ -147,12 +147,15 @@ def _fallback(job, profile, items, pref, analysis_text: str) -> GreetingResult:
 
     # 句式按「像人在说话」而不是「像简历条目」来组织：
     # 先接一句对方的话头，再说时间，再给证据，最后落到要确认的事。
+    # 第三条（请假/部分远程）是后加的：40 个打卡工作日和毕设开题、中期、答辩
+    # 压在同一个学期里，能不能回校必须当场问清，不能等到入职才发现走不开。
     body = (
         f"您好，看到在招「{job.title}」，补充一下我的情况。\n\n"
         f"我是{major}专业 {grad_year} 届{degree}，"
         f"{start} 可以到岗，能连续实习到 {end}。{proof}"
-        f"\n\n想先确认三点：实习期是否双休？能否远程或视频面试？"
-        f"实习结束能否开具实习证明？"
+        f"\n\n想先确认四点：一是实习期是否双休；二是能否远程或视频面试；"
+        f"三是学校还有毕业设计要求回校，实习期间能否请假或部分时间远程；"
+        f"四是实习结束能否开具实习证明？"
     ).strip()
 
     issues = checker.check_text(body, "\n".join(allowed_texts(items)))
@@ -167,7 +170,7 @@ def _fallback(job, profile, items, pref, analysis_text: str) -> GreetingResult:
             verdict_text=msg,
         )],
         used_facts=[],
-        pending_questions=["是否双休", "能否远程面试", "能否开具实习证明"],
+        pending_questions=["是否双休", "能否远程面试", "能否请假/部分远程处理毕设", "能否开具实习证明"],
         degraded=True,
         model="template",
     )
